@@ -1,52 +1,57 @@
 import os
 import tempfile
 import streamlit as st
-from streamlit_chat import message
 from rag import ChatPDF
 
 st.set_page_config(page_title="Chat with your PDF docs")
 
+def initialize_session_state():
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "assistant" not in st.session_state:
+        st.session_state.assistant = ChatPDF()
 
 def display_messages():
     st.subheader("Chat")
-    for i, (msg, is_user) in enumerate(st.session_state["messages"]):
-        message(msg, is_user=is_user, key=str(i))
-    st.session_state["thinking_spinner"] = st.empty()
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
+def process_input(user_input):
+    if user_input:
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": user_input})
 
-def process_input():
-    if st.session_state["user_input"] and\
-       len(st.session_state["user_input"].strip()) > 0:
-        user_text = st.session_state["user_input"].strip()
-        with st.session_state["thinking_spinner"], st.spinner("Thinking..."):
-            agent_text = st.session_state["assistant"].ask(user_text)
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(user_input)
 
-        st.session_state["messages"].append((user_text, True))
-        st.session_state["messages"].append((agent_text, False))
+        # Generate and display assistant response
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                response = st.session_state.assistant.ask(user_input)
+                st.markdown(response)
 
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response})
 
 def read_and_save_file():
-    st.session_state["assistant"].clear()
-    st.session_state["messages"] = []
-    st.session_state["user_input"] = ""
+    st.session_state.assistant.clear()
+    st.session_state.messages = []
 
-    for file in st.session_state["file_uploader"]:
+    for file in st.session_state.file_uploader:
         with tempfile.NamedTemporaryFile(delete=False) as tf:
             tf.write(file.getbuffer())
             file_path = tf.name
 
-        with st.session_state["ingestion_spinner"], \
-             st.spinner(f"Ingesting {file.name}"):
-            st.session_state["assistant"].ingest(file_path)
+        with st.spinner(f"Ingesting {file.name}"):
+            st.session_state.assistant.ingest(file_path)
         os.remove(file_path)
 
+def main():
+    initialize_session_state()
 
-def page():
-    if len(st.session_state) == 0:
-        st.session_state["messages"] = []
-        st.session_state["assistant"] = ChatPDF()
-
-    st.header("chat with your PDF docs")
+    st.header("Chat with your PDF docs")
 
     st.subheader("Upload a document")
     st.file_uploader(
@@ -58,11 +63,11 @@ def page():
         accept_multiple_files=True,
     )
 
-    st.session_state["ingestion_spinner"] = st.empty()
-
     display_messages()
-    st.text_input("Message", key="user_input", on_change=process_input)
 
+    user_input = st.chat_input("Type your message here...")
+    if user_input:
+        process_input(user_input)
 
 if __name__ == "__main__":
-    page()
+    main()

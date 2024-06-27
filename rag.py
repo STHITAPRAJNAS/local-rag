@@ -7,25 +7,30 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.prompts import PromptTemplate
 from langchain.vectorstores.utils import filter_complex_metadata
-
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.chains import ConversationalRetrievalChain
 
 class ChatPDF:
     vector_store = None
     retriever = None
-    chain = None 
+    chain = None
+    memory = None
 
     def __init__(self):
         self.model = ChatOllama(model="llama3:latest")
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=100)
+        self.memory = ConversationBufferWindowMemory(k=4, memory_key="chat_history", return_messages=True)
         self.prompt = PromptTemplate.from_template(
             """
-            [INST]<<SYS>> You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.<</SYS>> 
-            Question: {question} 
-            Context: {context} 
-            Answer: [/INST]
+            You are an assistant for question-answering tasks. Use the following pieces of retrieved context and chat history to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
+            
+            Chat History: {chat_history}
+            Context: {context}
+            Question: {question}
+            Answer:
             """
         )
-    
+
     def ingest(self, pdf_path):
         docs = PyPDFLoader(file_path=pdf_path).load()
         chunks = self.text_splitter.split_documents(docs)
@@ -40,21 +45,20 @@ class ChatPDF:
             },
         )
 
-        self.chain = ({
-            "context" : self.retriever,
-            "question" : RunnablePassthrough()
-                       }
-                        | self.prompt
-                        | self.model
-                        | StrOutputParser()
-                       )
-        
+        self.chain = ConversationalRetrievalChain.from_llm(
+            llm=self.model,
+            retriever=self.retriever,
+            memory=self.memory,
+            combine_docs_chain_kwargs={"prompt": self.prompt}
+        )
+
     def ask(self, query: str):
         if not self.chain:
             return "Please ingest a PDF file first."
-        return self.chain.invoke(query)
-    
+        return self.chain({"question": query})["answer"]
+
     def clear(self):
         self.vector_store = None
         self.retriever = None
         self.chain = None
+        self.memory.clear()
