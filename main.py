@@ -4,7 +4,7 @@ import streamlit as st
 from streamlit_chat import message
 from rag import ChatPDF
 
-st.set_page_config(page_title="ChatPDF")
+st.set_page_config(page_title="Chat with your PDF docs")
 
 
 def display_messages():
@@ -46,7 +46,7 @@ def page():
         st.session_state["messages"] = []
         st.session_state["assistant"] = ChatPDF()
 
-    st.header("ChatPDF")
+    st.header("chat with your PDF docs")
 
     st.subheader("Upload a document")
     st.file_uploader(
