@@ -17,17 +17,21 @@ class ChatPDF:
     memory = None
 
     def __init__(self):
-        self.model = ChatOllama(model="llama3:latest")
+        self.model = ChatOllama(model="llama3:latest", temperature=0.1)
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=100)
-        self.memory = ConversationBufferWindowMemory(k=4, memory_key="chat_history", return_messages=True)
+        self.memory = ConversationBufferWindowMemory(k=3, memory_key="chat_history", return_messages=True, output_key="answer")
         self.prompt = PromptTemplate.from_template(
             """
-            You are an assistant for question-answering tasks. Use the following pieces of retrieved context and chat history to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
+            You are an assistant for question-answering tasks. Use only the following pieces of retrieved context 
+            to answer the question. If the context doesn't contain the answer, 
+            say "I don't have enough information to answer that question." 
+            Do not use any prior knowledge. Keep your answer concise, using no more than five sentences.
+            You can answer greeting type questions 
             
-            Chat History: {chat_history}
             Context: {context}
-            Question: {question}
-            Answer:
+            Chat History: {chat_history}
+            Human: {question}
+            Assistant:
             """
         )
 
@@ -36,8 +40,8 @@ class ChatPDF:
         chunks = self.text_splitter.split_documents(docs)
         chunks = filter_complex_metadata(chunks)
 
-        vector_store = Chroma.from_documents(documents=chunks, embedding=FastEmbedEmbeddings())
-        self.retriever = vector_store.as_retriever(
+        self.vector_store = Chroma.from_documents(documents=chunks, embedding=FastEmbedEmbeddings())
+        self.retriever = self.vector_store.as_retriever(
             search_type="similarity_score_threshold",
             search_kwargs={
                 'k': 3,
@@ -49,15 +53,24 @@ class ChatPDF:
             llm=self.model,
             retriever=self.retriever,
             memory=self.memory,
-            combine_docs_chain_kwargs={"prompt": self.prompt}
+            combine_docs_chain_kwargs={"prompt": self.prompt},
+            return_source_documents=False,
+            verbose=True
         )
 
     def ask(self, query: str):
         if not self.chain:
             return "Please ingest a PDF file first."
-        return self.chain({"question": query})["answer"]
+
+        result = self.chain({"question": query})
+        answer = result["answer"]
+        #sources = [doc.metadata.get('source', 'Unknown') for doc in result.get('source_documents', [])]
+
+        return f"Answer: {answer}\n"
 
     def clear(self):
+        if self.vector_store:
+            self.vector_store.delete_collection()
         self.vector_store = None
         self.retriever = None
         self.chain = None

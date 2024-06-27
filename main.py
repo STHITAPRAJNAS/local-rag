@@ -10,6 +10,8 @@ def initialize_session_state():
         st.session_state.messages = []
     if "assistant" not in st.session_state:
         st.session_state.assistant = ChatPDF()
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
 def display_messages():
     st.subheader("Chat")
@@ -21,6 +23,7 @@ def process_input(user_input):
     if user_input:
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.chat_history.append((user_input, ""))
 
         # Display user message
         with st.chat_message("user"):
@@ -34,10 +37,12 @@ def process_input(user_input):
 
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": response})
+        st.session_state.chat_history[-1] = (user_input, response)
 
 def read_and_save_file():
     st.session_state.assistant.clear()
     st.session_state.messages = []
+    st.session_state.chat_history = []
 
     for file in st.session_state.file_uploader:
         with tempfile.NamedTemporaryFile(delete=False) as tf:
